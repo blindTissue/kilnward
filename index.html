@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KILNWARD — Elegy of the Porcelain Saint</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="stylesheet" href="./styles/main.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.min.js",
+        "three/addons/": "./vendor/three/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="game-root">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Floating 3D-projected damage numbers & status pops -->
+    <div id="floating-layer" aria-hidden="true"></div>
+
+    <!-- Vignette & atmospheric damage/heal flash -->
+    <div id="screen-vignette"></div>
+    <div id="screen-flash"></div>
+
+    <!-- HUD (visible during gameplay) -->
+    <div id="hud" class="hidden">
+      <!-- Top-Left: Quest & Character Summary -->
+      <div id="hud-top-left">
+        <div class="panel-ornate quest-panel">
+          <div id="quest-act-eyebrow" class="panel-eyebrow">ACT I · THE SUNKEN KILN</div>
+          <div id="quest-title" class="quest-title">Awaken at the Cloister</div>
+          <div id="quest-objective" class="quest-objective">Speak with Brother Oren beside the brazier.</div>
+          <div id="bells-tracker" class="bells-tracker">
+            <span id="bell-west-pip" class="bell-pip" title="West Bell — Verdigris Nave">◈ West Bell</span>
+            <span id="bell-east-pip" class="bell-pip" title="East Bell — Glaze Ossuary">◈ East Bell</span>
+          </div>
+        </div>
+        <div class="stats-strip">
+          <span class="stat-pill"><span class="stat-icon gold">✦</span> <span id="hud-gold">0</span> Shards</span>
+          <span class="stat-pill"><span class="stat-icon">Lv</span> <span id="hud-level">1</span></span>
+          <span class="stat-pill" id="hud-relics-pill" title="Equipped Relics"><span class="stat-icon teal">❖</span> <span id="hud-relic-count">0</span> Relics</span>
+          <span class="stat-pill" id="hud-align-pill" title="Moral Path: Resonance vs Cinder"><span id="hud-align-text">Unbound</span></span>
+        </div>
+      </div>
+
+      <!-- Top-Center: Zone Banner -->
+      <div id="zone-banner" class="hidden">
+        <div id="zone-banner-sub" class="zone-sub">SANCTUARY</div>
+        <div id="zone-banner-title" class="zone-title">The Sunken Cloister</div>
+        <div class="zone-rule"></div>
+      </div>
+
+      <!-- Top-Right: Scrolling Minimap & Quick Buttons -->
+      <div id="hud-top-right">
+        <div class="minimap-frame">
+          <canvas id="minimap-canvas" width="164" height="164"></canvas>
+          <div id="minimap-zone-label">The Sunken Cloister</div>
+        </div>
+        <div class="quick-buttons">
+          <button id="btn-codex" class="hud-mini-btn" title="Lore Codex & Relics (Tab)">Codex [Tab]</button>
+          <button id="btn-mute" class="hud-mini-btn" title="Toggle Audio (M)">♪ Sound</button>
+          <button id="btn-pause" class="hud-mini-btn" title="Menu & Controls (Esc)">Menu [Esc]</button>
+        </div>
+      </div>
+
+      <!-- Contextual Interaction / Locked Gate Hint Prompt -->
+      <div id="interact-prompt" class="hidden">
+        <span id="interact-key-badge" class="key-badge">F</span>
+        <span id="interact-label">Speak to Brother Oren</span>
+      </div>
+
+      <!-- Boss Bar (shared across all 4 Act Bosses) -->
+      <div id="boss-bar-wrap" class="hidden">
+        <div class="boss-meta">
+          <span id="boss-name">SAINT CASSIAN, THE FRACTURED KILN</span>
+          <span id="boss-phase">PHASE I · UNBROKEN GLAZE</span>
+        </div>
+        <div class="boss-hp-track">
+          <div id="boss-hp-trail" class="boss-hp-trail"></div>
+          <div id="boss-hp-fill" class="boss-hp-fill"></div>
+        </div>
+      </div>
+
+      <!-- Bottom-Center: Diablo-inspired Orbs + Action Bar -->
+      <div id="hud-bottom">
+        <div class="orb-wrap">
+          <div class="orb hp-orb">
+            <div id="hp-orb-fill" class="orb-liquid"></div>
+            <div class="orb-gloss"></div>
+            <div id="hp-orb-text" class="orb-value">120 / 120</div>
+          </div>
+          <div class="orb-label">VITALITY</div>
+        </div>
+
+        <div class="action-bar-wrap">
+          <div class="action-slots">
+            <div class="skill-slot" id="slot-slash" data-key="LMB / J">
+              <div id="weapon-glyph" class="skill-glyph">⚔</div>
+              <div id="weapon-name" class="skill-name">Claymore</div>
+              <div class="skill-key">LMB / V</div>
+              <div class="skill-cd-overlay"></div>
+            </div>
+            <div class="skill-slot" id="slot-bolt" data-key="RMB / E">
+              <div class="skill-glyph teal">✧</div>
+              <div class="skill-name">Bolt</div>
+              <div class="skill-cost">14 MP</div>
+              <div class="skill-key">RMB / E</div>
+              <div class="skill-cd-overlay"></div>
+            </div>
+            <div class="skill-slot locked" id="slot-nova" data-key="Q">
+              <div class="skill-glyph gold">✹</div>
+              <div class="skill-name">Kiln Nova</div>
+              <div class="skill-cost">28 MP</div>
+              <div class="skill-key">Q</div>
+              <div class="skill-cd-overlay"></div>
+              <div class="skill-lock-tag">ACT I</div>
+            </div>
+            <div class="skill-slot locked" id="slot-aegis" data-key="R">
+              <div class="skill-glyph amber">⛨</div>
+              <div class="skill-name">Aegis</div>
+              <div class="skill-cost">32 MP</div>
+              <div class="skill-key">R</div>
+              <div class="skill-cd-overlay"></div>
+              <div class="skill-lock-tag">ACT I</div>
+            </div>
+            <div class="skill-slot locked" id="slot-tether" data-key="C">
+              <div class="skill-glyph teal">⛓</div>
+              <div class="skill-name">Tether</div>
+              <div class="skill-cost">20 MP</div>
+              <div class="skill-key">C</div>
+              <div class="skill-cd-overlay"></div>
+              <div class="skill-lock-tag">ACT II</div>
+            </div>
+            <div class="skill-slot" id="slot-dash" data-key="SPACE">
+              <div class="skill-glyph ivory">⤼</div>
+              <div class="skill-name">Dash</div>
+              <div class="skill-key">SPACE</div>
+              <div class="skill-cd-overlay"></div>
+            </div>
+            <div class="skill-slot flask-slot" id="slot-flask" data-key="1">
+              <div class="skill-glyph crimson">⚗</div>
+              <div class="skill-name">Flask</div>
+              <div id="flask-count" class="flask-charges">3</div>
+              <div class="skill-key">1</div>
+              <div class="skill-cd-overlay"></div>
+            </div>
+          </div>
+          <div class="xp-bar-track" title="Resonance Experience">
+            <div id="xp-bar-fill" class="xp-bar-fill"></div>
+            <span id="xp-bar-text" class="xp-bar-text">Lv 1 · 0 / 100 XP</span>
+          </div>
+          <div class="controls-hint">
+            WASD Move · LMB/J Attack · RMB/E Bolt · Q Nova · R Aegis · C Tether · V Weapon · Space Dash · F Interact
+          </div>
+        </div>
+
+        <div class="orb-wrap">
+          <div class="orb mp-orb">
+            <div id="mp-orb-fill" class="orb-liquid"></div>
+            <div class="orb-gloss"></div>
+            <div id="mp-orb-text" class="orb-value">80 / 80</div>
+          </div>
+          <div class="orb-label">AETHER</div>
+        </div>
+      </div>
+
+      <!-- Toast Banner -->
+      <div id="toast-banner" class="hidden">
+        <div id="toast-kicker" class="toast-kicker">RELIC UNLOCKED</div>
+        <div id="toast-title" class="toast-title">Solar Kiln Nova</div>
+        <div id="toast-desc" class="toast-desc">Press Q to unleash a golden shockwave.</div>
+      </div>
+    </div>
+
+    <!-- TITLE SCREEN OVERLAY -->
+    <div id="overlay-title" class="overlay-backdrop">
+      <div class="title-card">
+        <div class="title-ornament">✦ ─── ◈ ─── ✦</div>
+        <div class="title-eyebrow">COMPLETE 4-ACT CAMPAIGN</div>
+        <h1 class="game-title">KILNWARD</h1>
+        <div class="game-subtitle">Elegy of the Porcelain Saint</div>
+        <p class="title-blurb">
+          Ascend from the Sunken Kiln across the Salt Viaduct and Cobalt Cisterns to the sunlit Belfry of Unfired Ash.
+          Mend what broke, uncover Orrery’s buried heresy, and decide the fate of the First Kiln.
+        </p>
+        <div class="title-actions">
+          <button id="btn-continue-save" class="btn-primary hidden">Continue Pilgrimage</button>
+          <button id="btn-start-game" class="btn-primary">Story Mode (Act I)</button>
+          <button id="btn-open-roguelike" class="btn-roguelike">🔥 Endless Kiln (Roguelike)</button>
+        </div>
+        <div class="difficulty-row">
+          <span class="chapter-select-label">DIFFICULTY</span>
+          <div class="difficulty-pills">
+            <button class="diff-btn active" data-diff="pilgrim">Pilgrim (Challenging)</button>
+            <button class="diff-btn" data-diff="overfired">Over-Fired (Hardcore)</button>
+          </div>
+        </div>
+        <div class="chapter-select-wrap">
+          <div class="chapter-select-label">OR JUMP DIRECTLY TO A LATER ACT</div>
+          <div class="chapter-buttons">
+            <button class="chapter-btn" data-act="2">Act II · Salt Viaduct</button>
+            <button class="chapter-btn" data-act="3">Act III · Cobalt Cisterns</button>
+            <button class="chapter-btn" data-act="4">Act IV · Dawn Belfry</button>
+          </div>
+        </div>
+        <div class="title-controls-grid">
+          <div><strong>WASD / Arrows</strong><span>Move</span></div>
+          <div><strong>Left Click / J</strong><span>Combo · V Swap Weapon</span></div>
+          <div><strong>Right Click / E</strong><span>Arcane Bolt (Aim)</span></div>
+          <div><strong>Q / R / C</strong><span>Nova / Aegis / Tether</span></div>
+          <div><strong>Space / Shift</strong><span>Gilded Dash</span></div>
+          <div><strong>F / 1 / Tab</strong><span>Interact / Flask / Codex</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIALOGUE / LORE / ENDING CHOICE OVERLAY -->
+    <div id="overlay-dialogue" class="overlay-backdrop hidden">
+      <div class="modal-card dialogue-card">
+        <div class="modal-kicker" id="dlg-kicker">PORCELAIN BELL-KEEPER</div>
+        <h2 class="modal-title" id="dlg-speaker">Brother Oren</h2>
+        <div class="modal-divider"></div>
+        <div id="dlg-body" class="dialogue-body"></div>
+        <div id="dlg-choices" class="dialogue-choices"></div>
+      </div>
+    </div>
+
+    <!-- KILN FORGE / UPGRADE & SHRINE TRAVEL OVERLAY -->
+    <div id="overlay-forge" class="overlay-backdrop hidden">
+      <div class="modal-card forge-card">
+        <div class="modal-kicker">KILN SHRINE · PROGRESS SAVED</div>
+        <h2 class="modal-title">Kintsugi Tempering</h2>
+        <p class="forge-subtitle">
+          Vitality, Aether, and Ember Flasks restored. Spend Gold Shards or fast-travel to any lit shrine.
+        </p>
+        <div class="forge-shards-banner">Available Gold Shards: <strong id="forge-gold">0</strong> ✦</div>
+        <div id="forge-list" class="forge-list"></div>
+        <div id="forge-travel-wrap" class="forge-travel-wrap hidden">
+          <div class="forge-travel-label">SHRINE FAST TRAVEL</div>
+          <div id="forge-travel-list" class="forge-travel-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-close-forge" class="btn-secondary">Leave Shrine [Esc / F]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODEX / RELICS OVERLAY -->
+    <div id="overlay-codex" class="overlay-backdrop hidden">
+      <div class="modal-card codex-card">
+        <div class="modal-kicker">VESPER'S LEDGER</div>
+        <h2 class="modal-title">Codex &amp; Relics</h2>
+        <div class="codex-columns">
+          <div class="codex-col">
+            <h3>Equipped Relics &amp; Arts</h3>
+            <div id="codex-relics" class="codex-list"></div>
+          </div>
+          <div class="codex-col">
+            <h3>Recovered Steles (<span id="codex-lore-count">0/7</span>)</h3>
+            <div id="codex-lore" class="codex-list"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-close-codex" class="btn-secondary">Close Ledger [Tab / Esc]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAUSE OVERLAY -->
+    <div id="overlay-pause" class="overlay-backdrop hidden">
+      <div class="modal-card pause-card">
+        <div class="modal-kicker">PILGRIMAGE PAUSED</div>
+        <h2 class="modal-title">KILNWARD</h2>
+        <div class="title-controls-grid compact">
+          <div><strong>WASD / Arrows</strong><span>Move</span></div>
+          <div><strong>LMB / J / V</strong><span>Attack / Swap Weapon</span></div>
+          <div><strong>RMB / E</strong><span>Arcane Bolt</span></div>
+          <div><strong>Q / R / C</strong><span>Nova / Aegis / Tether</span></div>
+          <div><strong>Space / Shift</strong><span>Gilded Dash</span></div>
+          <div><strong>F / 1 / Tab</strong><span>Interact / Flask / Codex</span></div>
+        </div>
+        <div class="modal-footer row">
+          <button id="btn-resume" class="btn-primary">Resume</button>
+          <button id="btn-restart-pause" class="btn-secondary">Title Screen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEATH OVERLAY -->
+    <div id="overlay-death" class="overlay-backdrop hidden">
+      <div class="modal-card death-card">
+        <div class="modal-kicker crimson">VESSEL SHATTERED</div>
+        <h2 class="modal-title">The Glaze Cools</h2>
+        <p class="dialogue-body">
+          Yet Kintsugi gold remembers its seam. Awaken again at your last lit Kiln Shrine with all relics, spells, and shards intact.
+        </p>
+        <div class="modal-footer">
+          <button id="btn-respawn" class="btn-primary">Re-fire at Shrine</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IN-ENGINE 3D CUTSCENE LETTERBOX LAYER -->
+    <div id="cutscene-layer" class="hidden">
+      <div class="cinema-bar cinema-bar-top"></div>
+      <div class="cinema-bar cinema-bar-bottom">
+        <div class="cutscene-text-wrap">
+          <div id="cutscene-kicker" class="cutscene-kicker"></div>
+          <div id="cutscene-caption" class="cutscene-caption"></div>
+        </div>
+        <button id="btn-skip-cutscene" class="skip-cutscene-btn">Skip [Space]</button>
+      </div>
+    </div>
+
+    <!-- ROGUELIKE LOBBY: WEAPON SELECT & KILN EMBER META-UPGRADES -->
+    <div id="overlay-rl-lobby" class="overlay-backdrop hidden">
+      <div class="modal-card rl-wide-card">
+        <div class="modal-kicker gold">ROGUELIKE MODE · THE ENDLESS KILN</div>
+        <h2 class="modal-title">Prepare Your Vessel</h2>
+        <div class="rl-meta-strip">
+          <span>Kiln Embers: <strong id="rl-embers" class="gold-text">0</strong> 🔥</span>
+          <span>Best Floor: <strong id="rl-best-floor">0</strong></span>
+          <span>Runs: <strong id="rl-total-runs">0</strong></span>
+        </div>
+        <div class="rl-section-label">1. CHOOSE STARTING WEAPON</div>
+        <div id="rl-weapon-grid" class="rl-weapon-grid"></div>
+        <div class="rl-section-label">2. PERMANENT KILN EMBER UPGRADES</div>
+        <div id="rl-meta-grid" class="rl-meta-grid"></div>
+        <div class="modal-footer row">
+          <button id="btn-rl-back" class="btn-secondary">Back to Title</button>
+          <button id="btn-rl-launch" class="btn-primary">Enter Floor 1</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROGUELIKE 3-CHOICE BOON DRAFT -->
+    <div id="overlay-rl-boons" class="overlay-backdrop hidden">
+      <div class="modal-card rl-wide-card">
+        <div id="rl-boon-kicker" class="modal-kicker gold">FLOOR CLEARED · CLAIM A KINTSUGI BOON</div>
+        <h2 class="modal-title">Choose Your Resonance</h2>
+        <div id="rl-boon-cards" class="rl-boon-cards"></div>
+        <div class="modal-footer row">
+          <button id="btn-rl-reroll" class="btn-secondary">🎲 Reroll Boons (<span id="rl-reroll-count">1</span>)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROGUELIKE NEXT-ROOM PORTAL CHOICE -->
+    <div id="overlay-rl-portal" class="overlay-backdrop hidden">
+      <div class="modal-card rl-portal-card">
+        <div id="rl-portal-kicker" class="modal-kicker teal">CHOOSE YOUR PATH</div>
+        <h2 class="modal-title">Ascend the Endless Kiln</h2>
+        <div id="rl-portal-cards" class="rl-portal-cards"></div>
+      </div>
+    </div>
+
+    <!-- ROGUELIKE PEDDLER SANCTUARY SHOP -->
+    <div id="overlay-rl-shop" class="overlay-backdrop hidden">
+      <div class="modal-card rl-wide-card">
+        <div class="modal-kicker teal">PEDDLER'S SANCTUARY · REST &amp; TRADE</div>
+        <h2 class="modal-title">The Traveling Glazier</h2>
+        <p class="forge-subtitle">Restored +45% Vitality &amp; +1 Ember Flask. Spend Gold Shards before ascending.</p>
+        <div class="forge-shards-banner">Available Gold Shards: <strong id="rl-shop-gold">0</strong> ✦</div>
+        <div id="rl-shop-list" class="forge-list"></div>
+        <div class="rl-section-label">SWAP WEAPON (45 ✦)</div>
+        <div id="rl-shop-weapons" class="chapter-buttons" style="margin-bottom:16px;"></div>
+        <div class="modal-footer row">
+          <button id="btn-rl-leave-shop" class="btn-primary">Continue Ascent</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROGUELIKE RUN SUMMARY -->
+    <div id="overlay-rl-summary" class="overlay-backdrop hidden">
+      <div class="modal-card victory-card">
+        <div class="modal-kicker crimson">VESSEL SHATTERED · ENDLESS KILN</div>
+        <h2 class="modal-title">The Firing Ends</h2>
+        <p id="rl-summary-sub" class="dialogue-body"></p>
+        <div id="rl-summary-stats" class="victory-stats"></div>
+        <div class="modal-footer row">
+          <button id="btn-rl-lobby-return" class="btn-primary">Kiln Lobby (Spend Embers)</button>
+          <button id="btn-rl-quick-retry" class="btn-secondary">Quick Retry</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMPAIGN VICTORY / ENDING OVERLAY -->
+    <div id="overlay-victory" class="overlay-backdrop hidden">
+      <div class="modal-card victory-card">
+        <div id="victory-kicker" class="modal-kicker gold">ENDING I · THE GOLDEN SEAM</div>
+        <h2 id="victory-title" class="modal-title">The Kiln Cools to Warmth</h2>
+        <p id="victory-epilogue" class="dialogue-body"></p>
+        <div id="victory-stats" class="victory-stats"></div>
+        <div class="modal-footer row">
+          <button id="btn-continue-explore" class="btn-secondary">Continue Exploring</button>
+          <button id="btn-play-again" class="btn-primary">New Pilgrimage</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
